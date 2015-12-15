@@ -1,3 +1,7 @@
+organization := "com.wix"
+
+name := "satori"
+
 scalaVersion := "2.11.7"
 
 resolvers += Resolver.sonatypeRepo("public")

@@ -1,33 +1,45 @@
 package com.wix.satori
 
-import java.io.PrintStream
-import java.time.ZoneOffset
-import java.time.format.DateTimeFormatter
+import java.io.{File, PrintStream}
 
-import com.github.tototoshi.csv._
-import com.wix.satori.analysis.GitRepositoryAnalyzer
+import com.wix.satori.analysis.{GitRepositoryAnalyzer, Logging}
+import com.wix.satori.output.CSVOutput
+import scopt.OptionParser
 
-object Driver extends App {
-  import GitRepositoryAnalyzer._
-  val config = configurationParser.parse(args, emptyConfiguration).get  //TODO
+object Driver extends App with Logging {
+  val analyzer = GitRepositoryAnalyzer
+  val defaultFormatter = CSVOutput
+  val formatters = Seq(CSVOutput).map { f => f.shortName -> f }.toMap
 
-  val w = CSVWriter.open(config.output map { new PrintStream(_) } getOrElse System.out)
-  try {
-    // Consider: languages?
-    w.writeRow(Seq("hash", "author", "timestamp_utc", "prod_add_loc", "prod_del_loc", "test_add_loc", "test_del_loc"))
-    val dateFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm.ss")
-    analyze(config) foreach { commit =>
-      w.writeRow(Seq(
-        commit.hash,
-        commit.author,
-        dateFormatter.format(commit.timestamp.atOffset(ZoneOffset.UTC)),
-        commit.stats.aggregate.prod.addedLOC,
-        commit.stats.aggregate.prod.deletedLOC,
-        commit.stats.aggregate.test.addedLOC,
-        commit.stats.aggregate.test.deletedLOC
-      ))
-    }
-  } finally {
-    w.close()
+  var target: Option[File] = None
+  var formatter = defaultFormatter
+
+  // Decorate parser
+  val parser = new OptionParser[analyzer.Configuration]("satori") {
+    opt[File]('o', "output")
+      .valueName("<file>")
+      .action { case (o, c) => target = Some(o); c }
+      .text(s"Output file (defaults to standard output)")
+
+    opt[String]("format")
+      .valueName("<format>")
+      .action {
+        case ("csv", c) => formatter = CSVOutput; c
+        case (f, _) => throw new IllegalArgumentException(s"Invalid formatter '$f' specified")
+      }
+      .text(s"Output format; can be one of ${formatters.keys.mkString("[", ", ", "]")}, defaults to ${defaultFormatter.shortName}")
+  }
+  analyzer.configure(parser)
+  val config = parser.parse(args, analyzer.emptyConfiguration).get  // Already terminated on error
+
+  def stream =
+    target.map { f =>
+      info(s"Redirecting output to ${f.getAbsolutePath}")
+      new PrintStream(f)
+    }.getOrElse(System.out)
+
+  formatter.withOutput(stream) { output =>
+    analyzer.analyze(config) foreach output
+    info("Done")
   }
 }

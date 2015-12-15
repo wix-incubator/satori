@@ -17,25 +17,20 @@ import org.eclipse.jgit.treewalk.filter.TreeFilter
 object GitRepositoryAnalyzer extends RepositoryAnalyzer {
   val defaultFrom = "master"
 
-  case class Configuration(repo: File = new File("."), from: String = defaultFrom, output: Option[File] = None)
+  case class Configuration(repo: File = new File("."), from: String = defaultFrom)
 
   val emptyConfiguration = Configuration()
 
-  def configurationParser = new scopt.OptionParser[Configuration]("RepoAnalysis") {
-    opt[File]('r', "repo")
+  def configure(parser: scopt.OptionParser[Configuration]): Unit = {
+    parser.opt[File]('r', "repo")
       .valueName("<path>")
       .action { case (r, config) => config.copy(repo = r) }
       .text("The path to the repository (defaults to current working directory)")
 
-    opt[String]('f', "from")
+    parser.opt[String]('f', "from")
       .valueName("<ref>")
       .action { case (f, config) => config.copy(from = f) }
       .text(s"A Git reference from which to start traversal (defaults to '$defaultFrom')")
-
-    opt[File]('o', "output")
-      .valueName("<file>")
-      .action { case (o, config) => config.copy(output = Some(o)) }
-      .text(s"Output file (defaults to standard output)")
   }
 
   import RepositoryAnalyzer._

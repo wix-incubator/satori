@@ -1,39 +1,46 @@
 package com.wix.satori.analysis
 
-import java.io.File
 import java.time.Instant
 
 import com.wix.satori.analysis.RepositoryAnalyzer.Commit
-import org.slf4j.{LoggerFactory, Logger}
+import org.slf4j.{Logger, LoggerFactory}
 
 /**
   * Created by tomerga on 12/15/15.
   */
-trait RepositoryAnalyzer {
-  self: Singleton =>
-
-  type Configuration <: { def output: Option[File] }
-  def emptyConfiguration: Configuration
-  def configurationParser: scopt.OptionParser[Configuration]
-  def analyze(config: Configuration): Iterator[Commit]
+trait Logging {
+  self =>
 
   private val log: Logger = LoggerFactory.getLogger(self.getClass)
   protected def debug(s: =>String) = if (log.isDebugEnabled) log.debug(s)
   protected def info(s: =>String) = if (log.isInfoEnabled) log.info(s)
   protected def warn(s: =>String) = if (log.isWarnEnabled) log.warn(s)
   protected def error(s: =>String) = if (log.isErrorEnabled) log.error(s)
+}
 
-  protected def using[T <: AutoCloseable, R](gen: =>T)(thunk: T => R): R = {
+trait IOHelpers {
+  self: Logging =>
+
+  def using[T <: AutoCloseable, R](gen: =>T)(thunk: T => R): R = {
     val resource = gen
     try { thunk(resource) }
     finally { resource.close() }
   }
 
-  protected def die(s: =>String) = {
+  def die(s: =>String) = {
     error(s)
     System.exit(1)
     throw new Error()   // Fake exception throw since we can't directly return Nothing. WTF, Scala?
   }
+}
+
+trait RepositoryAnalyzer extends Logging with IOHelpers {
+  self: Singleton =>
+
+  type Configuration
+  def emptyConfiguration: Configuration
+  def configure(parser: scopt.OptionParser[Configuration]): Unit
+  def analyze(config: Configuration): Iterator[Commit]
 }
 
 object RepositoryAnalyzer {
