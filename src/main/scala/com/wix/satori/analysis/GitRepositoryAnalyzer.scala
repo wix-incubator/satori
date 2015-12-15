@@ -100,7 +100,7 @@ object GitRepositoryAnalyzer extends RepositoryAnalyzer {
                 debug(s"Processing edit hunk: [${edit.getBeginA}..${edit.getEndA}] -> [${edit.getBeginB}..${edit.getEndB}]")
                 edit.getType match {
                   case Edit.Type.DELETE =>
-                    updateStats(-edit.getLengthA, 0)
+                    updateStats(edit.getLengthA, 0)
 
                   case Edit.Type.EMPTY =>
                   // NOOP
