@@ -39,7 +39,7 @@ import RepoAnalysis._
 case class RepoAnalysis(config: AnalysisConfiguration) {
 
   val log: Logger = LoggerFactory.getLogger(this.getClass)
-  import log.{error, info, debug}
+  import log.{debug, error, info}
 
   private def using[T <: AutoCloseable, R](gen: =>T)(thunk: T => R): R = {
     val resource = gen
@@ -72,9 +72,9 @@ case class RepoAnalysis(config: AnalysisConfiguration) {
   case class CommitStatistics(aggregate: ClassifiedStatistics, byLanguage: Map[String, ClassifiedStatistics])
   object CommitStatistics { val empty = CommitStatistics(ClassifiedStatistics.empty, Map.empty) }
 
-  case class Commit(committer: String, timestamp: Instant, hash: String, stats: CommitStatistics)
+  case class Commit(author: String, timestamp: Instant, hash: String, stats: CommitStatistics)
 
-  def analyse(repo: Repository): Iterable[Commit] = {
+  def analyse(repo: Repository): Iterator[Commit] = {
     val from = Option(repo.resolve(config.from)) getOrElse die(s"Can't resolve reference ${config.from}!")
     using(new RevWalk(repo)) { revWalk =>
 
@@ -85,7 +85,7 @@ case class RepoAnalysis(config: AnalysisConfiguration) {
       val root = revWalk.parseCommit(from)
       revWalk.markStart(root)
 
-      (revWalk zip revWalk) map { case (current, prev) =>
+      revWalk.sliding(2) map { w => val current = w.head; val prev = w.tail.head; //case (current, prev) =>
         debug(s"Processing diff for ${prev.getName}..${current.getName}")
         val tree = new TreeWalk(repo)
         tree.addTree(prev.getTree)
@@ -150,7 +150,7 @@ case class RepoAnalysis(config: AnalysisConfiguration) {
         }
 
         Commit(
-          committer = current.getCommitterIdent.toExternalString,
+          author    = current.getAuthorIdent.getEmailAddress,
           timestamp = Instant.ofEpochSecond(current.getCommitTime),
           hash      = current.getName,
           stats     = CommitStatistics(aggregate, byLanguage.toMap)
