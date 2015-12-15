@@ -17,7 +17,7 @@ import org.eclipse.jgit.treewalk.filter.TreeFilter
 object GitRepositoryAnalyzer extends RepositoryAnalyzer {
   val defaultFrom = "master"
 
-  case class Configuration(repo: File = new File("."), from: String = defaultFrom)
+  case class Configuration(repo: File = new File("."), from: String = defaultFrom, output: Option[File] = None)
 
   val emptyConfiguration = Configuration()
 
@@ -31,6 +31,11 @@ object GitRepositoryAnalyzer extends RepositoryAnalyzer {
       .valueName("<ref>")
       .action { case (f, config) => config.copy(from = f) }
       .text(s"A Git reference from which to start traversal (defaults to '$defaultFrom')")
+
+    opt[File]('o', "output")
+      .valueName("<file>")
+      .action { case (o, config) => config.copy(output = Some(o)) }
+      .text(s"Output file (defaults to standard output)")
   }
 
   import RepositoryAnalyzer._

@@ -1,5 +1,6 @@
 package com.wix.satori.analysis
 
+import java.io.File
 import java.time.Instant
 
 import com.wix.satori.analysis.RepositoryAnalyzer.Commit
@@ -11,7 +12,7 @@ import org.slf4j.{LoggerFactory, Logger}
 trait RepositoryAnalyzer {
   self: Singleton =>
 
-  type Configuration
+  type Configuration <: { def output: Option[File] }
   def emptyConfiguration: Configuration
   def configurationParser: scopt.OptionParser[Configuration]
   def analyze(config: Configuration): Iterator[Commit]
