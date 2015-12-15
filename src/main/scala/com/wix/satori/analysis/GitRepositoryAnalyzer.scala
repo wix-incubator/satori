@@ -1,25 +1,27 @@
+package com.wix.satori.analysis
+
 import java.io.File
 import java.time.Instant
 
-import org.eclipse.jgit.diff.DiffAlgorithm.SupportedAlgorithm
 import org.eclipse.jgit.diff.DiffEntry.ChangeType
 import org.eclipse.jgit.diff._
-import org.eclipse.jgit.lib.Repository
+import org.eclipse.jgit.diff.DiffAlgorithm.SupportedAlgorithm
 import org.eclipse.jgit.revwalk.RevWalk
 import org.eclipse.jgit.storage.file.FileRepositoryBuilder
 import org.eclipse.jgit.treewalk.TreeWalk
 import org.eclipse.jgit.treewalk.filter.TreeFilter
-import org.slf4j.{Logger, LoggerFactory}
 
-import scala.collection.JavaConversions._
-
-object RepoAnalysis {
+/**
+  * Created by tomerga on 12/15/15.
+  */
+object GitRepositoryAnalyzer extends RepositoryAnalyzer {
   val defaultFrom = "master"
-  val unknownLanguageMarker = "<unknown>"
 
-  case class AnalysisConfiguration(repo: File = new File("."), from: String = defaultFrom)
+  case class Configuration(repo: File = new File("."), from: String = defaultFrom)
 
-  private val parser = new scopt.OptionParser[AnalysisConfiguration]("RepoAnalysis") {
+  val emptyConfiguration = Configuration()
+
+  def configurationParser = new scopt.OptionParser[Configuration]("RepoAnalysis") {
     opt[File]('r', "repo")
       .valueName("<path>")
       .action { case (r, config) => config.copy(repo = r) }
@@ -31,61 +33,25 @@ object RepoAnalysis {
       .text(s"A Git reference from which to start traversal (defaults to '$defaultFrom')")
   }
 
-  def main(args: Array[String]): Unit =
-    parser.parse(args, AnalysisConfiguration()).foreach { config => RepoAnalysis(config).run() }
-}
+  import RepositoryAnalyzer._
+  import scala.collection.JavaConversions._
 
-import RepoAnalysis._
-case class RepoAnalysis(config: AnalysisConfiguration) {
-
-  val log: Logger = LoggerFactory.getLogger(this.getClass)
-  import log.{debug, error, info}
-
-  private def using[T <: AutoCloseable, R](gen: =>T)(thunk: T => R): R = {
-    val resource = gen
-    try { thunk(resource) }
-    finally { resource.close() }
-  }
-
-  def die(s: =>String) = {
-    error(s)
-    System.exit(1)
-    throw new Error()   // Fake exception throw since we can't directly return Nothing. WTF, Scala?
-  }
-
-
-  case class ChangeSetStatistics(deletedLOC: Int, addedLOC: Int) {
-    def update(deletedLOC: Int, addedLOC: Int): ChangeSetStatistics =
-      ChangeSetStatistics(this.deletedLOC + deletedLOC, this.addedLOC + addedLOC)
-  }
-  object ChangeSetStatistics { val empty = ChangeSetStatistics(0, 0) }
-
-  case class ClassifiedStatistics(prod: ChangeSetStatistics, test: ChangeSetStatistics) {
-    def update(deletedLOC: Int, addedLOC: Int, updateProd: Boolean): ClassifiedStatistics =
-      ClassifiedStatistics(
-        prod = if ( updateProd) prod.update(deletedLOC, addedLOC) else prod,
-        test = if (!updateProd) test.update(deletedLOC, addedLOC) else test
-      )
-  }
-  object ClassifiedStatistics { val empty = ClassifiedStatistics(ChangeSetStatistics.empty, ChangeSetStatistics.empty) }
-
-  case class CommitStatistics(aggregate: ClassifiedStatistics, byLanguage: Map[String, ClassifiedStatistics])
-  object CommitStatistics { val empty = CommitStatistics(ClassifiedStatistics.empty, Map.empty) }
-
-  case class Commit(author: String, timestamp: Instant, hash: String, stats: CommitStatistics)
-
-  def analyse(repo: Repository): Iterator[Commit] = {
+  def analyze(config: GitRepositoryAnalyzer.Configuration): Iterator[Commit] = {
+    info(s"Starting repository analysis on ${config.repo} from ref ${config.from}")
+    val repo = new FileRepositoryBuilder().readEnvironment().findGitDir(config.repo).build()
     val from = Option(repo.resolve(config.from)) getOrElse die(s"Can't resolve reference ${config.from}!")
-    using(new RevWalk(repo)) { revWalk =>
 
+    using(new RevWalk(repo)) { revWalk =>
       val algorithm = DiffAlgorithm.getAlgorithm(SupportedAlgorithm.HISTOGRAM)
       val reader = repo.newObjectReader()
       val comparator = RawTextComparator.WS_IGNORE_ALL
 
-      val root = revWalk.parseCommit(from)
-      revWalk.markStart(root)
+      revWalk.markStart(revWalk.parseCommit(from))
 
-      revWalk.sliding(2) map { w => val current = w.head; val prev = w.tail.head; //case (current, prev) =>
+      revWalk.sliding(2) map { window =>
+        val current = window.head   // TODO clean this crap up
+        val prev = window.tail.head
+
         debug(s"Processing diff for ${prev.getName}..${current.getName}")
         val tree = new TreeWalk(repo)
         tree.addTree(prev.getTree)
@@ -122,7 +88,7 @@ case class RepoAnalysis(config: AnalysisConfiguration) {
               updateStats(lines, 0)
 
             case ChangeType.RENAME =>
-              // TODO files may move from prod to test and vice versa, and may change lagnuages as well
+            // TODO files may move from prod to test and vice versa, and may change languages as well
 
             case ChangeType.MODIFY =>
               val oldLoader = reader.open(entry.getOldId.toObjectId)
@@ -137,7 +103,7 @@ case class RepoAnalysis(config: AnalysisConfiguration) {
                     updateStats(-edit.getLengthA, 0)
 
                   case Edit.Type.EMPTY =>
-                    // NOOP
+                  // NOOP
 
                   case Edit.Type.INSERT =>
                     updateStats(0, edit.getLengthB)
@@ -157,11 +123,5 @@ case class RepoAnalysis(config: AnalysisConfiguration) {
         )
       }
     }
-  }
-
-  def run(): Unit = {
-    info(s"Starting repository analysis on ${config.repo} from ref ${config.from}")
-    val repo = new FileRepositoryBuilder().readEnvironment().findGitDir(config.repo).build()
-    analyse(repo) take 5 foreach println
   }
 }
