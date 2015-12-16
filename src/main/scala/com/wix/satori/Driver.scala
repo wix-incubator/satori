@@ -2,8 +2,9 @@ package com.wix.satori
 
 import java.io.{File, PrintStream}
 
-import com.wix.satori.analysis.{GitRepositoryAnalyzer, Logging}
+import com.wix.satori.analysis.GitRepositoryAnalyzer
 import com.wix.satori.output.CSVOutput
+import com.wix.satori.util.Logging
 import scopt.OptionParser
 
 object Driver extends App with Logging {

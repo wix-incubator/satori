@@ -2,7 +2,7 @@ package com.wix.satori.output
 
 import java.io.PrintStream
 
-import com.wix.satori.analysis.RepositoryAnalyzer.Commit
+import com.wix.satori.model.Commit
 
 /**
   * Created by tomerga on 12/15/15.

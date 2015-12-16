@@ -1,5 +1,7 @@
 package com.wix.satori.analysis
 
+import com.wix.satori.model._
+
 import java.io.File
 import java.time.Instant
 
@@ -33,7 +35,6 @@ object GitRepositoryAnalyzer extends RepositoryAnalyzer {
       .text(s"A Git reference from which to start traversal (defaults to '$defaultFrom')")
   }
 
-  import RepositoryAnalyzer._
   import scala.collection.JavaConversions._
 
   def analyze(config: GitRepositoryAnalyzer.Configuration): Iterator[Commit] = {

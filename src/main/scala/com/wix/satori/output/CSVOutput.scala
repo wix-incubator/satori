@@ -5,7 +5,7 @@ import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
 import com.github.tototoshi.csv.CSVWriter
-import com.wix.satori.analysis.RepositoryAnalyzer.Commit
+import com.wix.satori.model.Commit
 
 /**
   * Created by tomerga on 12/15/15.
