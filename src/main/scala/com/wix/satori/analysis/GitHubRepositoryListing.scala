@@ -1,14 +1,15 @@
 package com.wix.satori.analysis
 
 import akka.actor.ActorSystem
-import com.wix.satori.analysis.TeamCityAnalyzer.VcsRootList
 import com.wix.satori.util.{IOHelpers, Logging}
 import scopt.OptionParser
-import spray.http._
 import spray.httpx.unmarshalling.FromResponseUnmarshaller
 import spray.json.DefaultJsonProtocol
-
 import scala.concurrent.Future
+import spray.client.pipelining._
+import spray.http._
+import scala.concurrent.Await
+import scala.concurrent.duration._
 
 /**
   * Created by tomerga on 12/21/15.
@@ -20,11 +21,12 @@ object GitHubRepositoryListing extends App with Logging with IOHelpers {
   val parser = new OptionParser[Configuration]("GitHubRepositoryListing") {
     opt[String]('u', "user")
       .valueName("<token>")
-      .required()
+      .required
       .text("GitHub user authentication token (see https://github.com/settings/tokens)")
       .action { case (t, c) => c.copy(userAuthToken = t) }
 
     opt[String]('o', "org")
+      .unbounded
       .valueName("<organization>")
       .text("Limits repositories to the specified GitHub organization(s)")
       .action { case (o, c) => c.copy(orgs = c.orgs + o) }
@@ -32,20 +34,18 @@ object GitHubRepositoryListing extends App with Logging with IOHelpers {
 
   implicit val system = ActorSystem()
 
-  import spray.client.pipelining._
-  import spray.http._
   import system.dispatcher
-  import scala.concurrent.Await
-  import scala.concurrent.duration._
 
   lazy val `application/vnd.github.v3+json`  =
     MediaTypes.register(MediaType.custom("application/vnd.github.v3+json"))
 
 
-  case class Repository(id: Int, full_name: String, ssh_url: String)
+  case class Owner(login: String, id: Int, url: String, `type`: String)
+  case class Repository(id: Int, owner: Owner, full_name: String, ssh_url: String)
 
   object GitHubProtocol extends DefaultJsonProtocol {
-    implicit val repositoryFormat = jsonFormat3(Repository)
+    implicit val ownerFormat = jsonFormat4(Owner)
+    implicit val repositoryFormat = jsonFormat4(Repository)
   }
 
   try parser.parse(args, Configuration()) foreach { config =>
@@ -81,8 +81,12 @@ object GitHubRepositoryListing extends App with Logging with IOHelpers {
     }
 
     val repos = paginated[Repository](userRepos)
-    val r = Await.result(repos, 5.minutes)
-    r foreach println
+
+    def orgFilter(r: Repository) =
+      config.orgs.isEmpty ||
+        (r.owner.`type` == "Organization" && config.orgs.contains(r.owner.login))
+
+    Await.result(repos, 5.minutes) filter orgFilter foreach { r => println(r.ssh_url) }
   } finally {
     system.terminate()
     Await.ready(system.whenTerminated, 5.seconds)
